@@ -30,6 +30,7 @@ shoot_sound = pygame.mixer.Sound('shoot.wav')
 hit_sound = pygame.mixer.Sound('hit.wav')
 death_sound = pygame.mixer.Sound('death.wav')
 reload_sound = pygame.mixer.Sound('reload.wav')
+buy_sound = pygame.mixer.Sound('buy.wav')
 
 def has_line_of_sight(start_pos, end_pos, walls):
     line = pygame.Rect(0, 0, 1, 1)
@@ -53,13 +54,17 @@ class Player(pygame.sprite.Sprite):
         self.reloading = False
         self.health = 3
         self.last_reload_time = 0
-        self.weapons = ["pistol", "shotgun"]
         self.current_weapon = 0
         self.alive = True
         self.dead_enemy = 0
+        self.weapons = ["pistol", "shotgun"]
+        self.unlocked_weapons = ["pistol", "shotgun"]
         self.weapon_images = {
             "pistol": pygame.transform.scale(pygame.image.load("pistol.png"), (40, 15)),
-            "shotgun": pygame.transform.scale(pygame.image.load("shotgun.png"),(int(screen_width // 16), int(scale_factor * 25)))
+            "shotgun": pygame.transform.scale(pygame.image.load("shotgun.png"), (int(screen_width // 16), int(scale_factor * 25))),
+            "smg": pygame.transform.scale(pygame.image.load("smg.png"), (45, 20)),
+            "laser": pygame.transform.scale(pygame.image.load("laser.png"), (50, 15)),
+            "rocket": pygame.transform.scale(pygame.image.load("rocket.png"), (60, 25))
         }
         self.weapon_offset = 25
         self.invincible_time = 0
@@ -183,7 +188,7 @@ class Player(pygame.sprite.Sprite):
         self.rect.y += self.direction.y * 25
 
     def draw_weapon(self, surface, mouse_pos):
-        current_weapon_name = self.weapons[self.current_weapon]
+        current_weapon_name = self.unlocked_weapons[self.current_weapon]
         weapon_image = self.weapon_images[current_weapon_name]
 
         dx = mouse_pos[0] - self.rect.centerx
@@ -202,7 +207,9 @@ class Player(pygame.sprite.Sprite):
 
 
     def shoot(self, bullets, target_pos):
-        if self.weapons[self.current_weapon] == "shotgun":
+        self.target = [Enemy, ChasingEnemy, TeleportBoss, Boss]
+        weapon = self.unlocked_weapons[self.current_weapon]
+        if self.unlocked_weapons[self.current_weapon] == "shotgun":
             if self.ammo >= 3 and not self.reloading:
                 shoot_sound.play()
                 for _ in range(5):
@@ -216,6 +223,43 @@ class Player(pygame.sprite.Sprite):
                     bullets.add(bullet)
                 self.ammo -= 3
             elif self.ammo < 3 and not self.reloading:
+                self.reload()
+        elif weapon == "smg":
+            if self.ammo > 0 and not self.reloading:
+                shoot_sound.play()
+                for _ in range(2):
+                    spread = random.uniform(-0.5, 0.5)
+                    angle = math.atan2(target_pos[1] - self.rect.centery, target_pos[0] - self.rect.centerx) + spread
+                    dx = math.cos(angle) * 3
+                    dy = math.sin(angle) * 3
+                    bullet = Bullet(self.rect.centerx, self.rect.centery,
+                                    (self.rect.centerx + dx, self.rect.centery + dy),
+                                    "player", is_shotgun=False)
+                    bullets.add(bullet)
+                self.ammo -= 1
+            else:
+                self.reload()
+
+        elif weapon == "laser":
+            if self.ammo > 0 and not self.reloading:
+                shoot_sound.play()
+                bullet = Bullet(self.rect.centerx, self.rect.centery, target_pos, "player", self.speed * 2)
+                bullet.image.fill((0, 255, 255))
+                bullets.add(bullet)
+                bullets.add(bullet)
+                self.ammo -= 1
+            else:
+                self.reload()
+
+        elif weapon == "rocket":
+            if self.ammo > 0 and not self.reloading:
+                shoot_sound.play()
+                bullet = Bullet(self.rect.centerx, self.rect.centery, target_pos, "player", self.speed * 0.5)
+                bullet.image.fill((255, 120, 0))
+                bullet.explodes = True
+                bullets.add(bullet)
+                self.ammo -= 1
+            else:
                 self.reload()
         else:
             if self.ammo > 0 and not self.reloading:
@@ -257,8 +301,7 @@ class Player(pygame.sprite.Sprite):
         self.alive = True
 
     def switch_weapon(self, direction):
-        self.current_weapon = (self.current_weapon + direction) % len(self.weapons)
-        print("Текущее оружие:", self.weapons[self.current_weapon])
+        self.current_weapon = (self.current_weapon + direction) % len(self.unlocked_weapons)
 
 class BloodParticle(pygame.sprite.Sprite):
     def __init__(self, x, y, dx, dy, color=(255, 0, 0)):
@@ -314,14 +357,20 @@ class Trader(pygame.sprite.Sprite):
         self.image = pygame.Surface((50, 70))
         self.image.fill((255, 215, 0))
         self.rect = self.image.get_rect(center=(x, y))
-        self.options = random.sample(["+1 Max HP", "+10% Speed", "+1 Ammo"], 3)
-        self.prices = [3, 2, 4]  # чипов
+        self.weapon_options = ["smg", "laser", "rocket"]
+        self.prices = [5, 7, 10]
 
     def interact(self, player, index):
         if player.chips >= self.prices[index]:
-            perk = self.options[index]
-            player.apply_perk(perk)
-            player.chips -= self.prices[index]
+            new_weapon = self.weapon_options[index]
+            if new_weapon not in player.unlocked_weapons:
+                player.unlocked_weapons.append(new_weapon)
+                player.chips -= self.prices[index]
+                self.weapon_options[index] = "SOLD"
+                self.prices[index] = 0
+                buy_sound.play()
+
+
 
 class SpikeTrap(pygame.sprite.Sprite):
     def __init__(self, x, y):
@@ -375,6 +424,8 @@ class Bullet(pygame.sprite.Sprite):
         self.shooter = shooter
         self.origin = pygame.Vector2(x, y)
         self.is_shotgun = is_shotgun
+        self.piercing = False
+        self.explodes = False
 
         angle = math.atan2(target_pos[1] - y, target_pos[0] - x)
         if hasattr(Room, 'current_room') and Room.current_room.event == "bullet_drift":
@@ -395,12 +446,19 @@ class Bullet(pygame.sprite.Sprite):
 
     def check_collision(self, target, player):
         if self.rect.colliderect(target.rect):
-            is_crit = player.crit_chance > 0 and random.random() < player.crit_chance
-            damage = 2 if is_crit else 1
+            if hasattr(target, 'take_damage'):
+                damage = 1
+                if player.crit_chance > 0 and random.random() < player.crit_chance:
+                    damage = 2
+                for _ in range(damage):
+                    target.take_damage(player)
+                self.create_blood_splash(target)
 
-            for _ in range(damage):
-                target.take_damage(player)
-            self.create_blood_splash(target)
+            if self.explodes:
+                self.explode_area(player)
+
+            if not self.piercing:
+                self.kill()
 
             if self.is_shotgun:
                 distance = self.origin.distance_to(pygame.Vector2(target.rect.center))
@@ -411,10 +469,25 @@ class Bullet(pygame.sprite.Sprite):
                     if random.random() < 0.5:
                         target.take_damage(player)
                         self.create_blood_splash(target)
+                elif distance < 200:
+                    if random.random() < 0.5:
+                        target.take_damage(player)
+                        self.create_blood_splash(target)
             else:
                 target.take_damage(player)
                 self.create_blood_splash(target)
             self.kill()
+
+    def explode_area(self, player):
+        explosion_radius = 100
+        explosion_center = pygame.Vector2(self.rect.center)
+        for enemy in list(Room.current_room.enemies):
+            if explosion_center.distance_to(enemy.rect.center) <= explosion_radius:
+                enemy.take_damage(player)
+        for _ in range(15):
+            dx = random.uniform(-3, 3)
+            dy = random.uniform(-3, 3)
+            blood_particles.add(BloodParticle(self.rect.centerx, self.rect.centery, dx, dy, (255, 140, 0)))
 
     def create_blood_splash(self, target):
 
@@ -645,16 +718,17 @@ class Room:
         self.event = random.choice([None, "fog", "strong_enemies", "bullet_drift"])
         self.wind_direction = pygame.Vector2(0, 0)
         self.trader = None
-
-
-
-        if random.randint(1, 8) == 1:
-            self.trader = Trader(WIDTH // 2, HEIGHT // 2)
-
         self.chips = pygame.sprite.Group()
+
+
+
+
 
         if Room.room_count % 10 == 0:
             self.boss = Boss(WIDTH // 2, HEIGHT // 2, Room.room_count // 10)
+        elif random.randint(1, 8) == 1:
+            self.trader = Trader(WIDTH // 2, HEIGHT // 2)
+            self.enemies = pygame.sprite.Group()
         else:
             normal_count = min(3 + Room.room_count // 2, 10)
             chasing_count = min(Room.room_count // 2, 10)
@@ -665,11 +739,7 @@ class Room:
                 self.enemies.add(ChasingEnemy(random.randint(50, WIDTH - 50), random.randint(50, HEIGHT - 50)))
             for _ in range(teleporting_count):
                 self.enemies.add(TeleportBoss(random.randint(50, WIDTH - 50), random.randint(50, HEIGHT - 50)))
-        #if self.trader == True:
-
-
-
-        for _ in range(2):
+        for _ in range(3):
             trap_x = random.randint(100, WIDTH - 100)
             trap_y = random.randint(100, HEIGHT - 100)
             self.traps.add(SpikeTrap(trap_x, trap_y))
@@ -696,25 +766,26 @@ class Room:
         grid = [[False for _ in range(grid_width)] for _ in range(grid_height)]
 
         attempts = 0
+
         while attempts < max_tries and len(walls) < Room.walls_count + Room.room_count:
             width = random.randint(200, 400)
             height = random.choice([20, random.randint(100, 300)])
 
+
             x_grid = random.randint(1, grid_width - 2)
             y_grid = random.randint(1, grid_height - 2)
+
 
             x = x_grid * grid_size
             y = y_grid * grid_size
 
-            can_place_wall = True
 
+            can_place_wall = True
             for dx in range(x_grid, min(x_grid + (width // grid_size), grid_width)):
                 for dy in range(y_grid, min(y_grid + (height // grid_size), grid_height)):
                     if grid[dy][dx]:
                         can_place_wall = False
                         break
-                    if dx in list(range(width // grid_size - 6, width // grid_size + 6)) and dy in list(range(height // grid_size - 6, height // grid_size + 6)):
-                        can_place_wall = False
                 if not can_place_wall:
                     break
 
@@ -858,6 +929,8 @@ def show_main_menu():
                 return
 
 def main():
+    current_music_type = "normal"
+    trader_music = 'mystery_shop.wav'
     pygame.mixer.music.load('Waveshaper - Client.mp3') #music
     pygame.mixer.music.set_volume(0.1)
     pygame.mixer.music.play(-1, 0.0)
@@ -912,9 +985,27 @@ def main():
             if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
                 show_main_menu()
 
+            if event.type == pygame.KEYDOWN:
+                if room.trader and player.rect.colliderect(room.trader.rect):
+                    if event.key == pygame.K_1:
+                        room.trader.interact(player, 0)
+                    elif event.key == pygame.K_2:
+                        room.trader.interact(player, 1)
+                    elif event.key == pygame.K_3:
+                        room.trader.interact(player, 2)
+
         room = check_room_transition(player, room)
 
         Room.current_room = room
+
+        if room.trader and current_music_type != "trader":
+            pygame.mixer.music.load(trader_music)
+            pygame.mixer.music.play(-1)
+            current_music_type = "trader"
+        elif not room.trader and current_music_type != "normal":
+            pygame.mixer.music.load('Waveshaper - Client.mp3')
+            pygame.mixer.music.play(-1)
+            current_music_type = "normal"
 
         all_sprites.update(keys, room.walls, current_time)
 
@@ -1028,17 +1119,26 @@ def main():
         room.barrels.draw(screen)
         chip_text = font.render(f"Chips: {player.chips}", True, (0, 255, 255))
         screen.blit(chip_text, (10, 110))
+
         room.chips.update()
         room.chips.draw(screen)
 
-
+        for chip in room.chips:
+            if player.rect.colliderect(chip.rect):
+                chip.collect(player)
 
         if room.trader:
             screen.blit(room.trader.image, room.trader.rect)
             font = pygame.font.Font(None, 24)
             if player.rect.colliderect(room.trader.rect):
-                for i, option in enumerate(room.trader.options):
-                    text = font.render(f"{i + 1}. {option} - {room.trader.prices[i]} chips", True, (255, 255, 255))
+                for i, option in enumerate(room.trader.weapon_options):
+                    display_text = f"{i + 1}. {option} - {room.trader.prices[i]} chips"
+                    if option == "SOLD":
+                        text_color = (255, 0, 0)
+                        display_text = f"{i + 1}. SOLD"
+                    else:
+                        text_color = (255, 255, 255)
+                    text = font.render(display_text, True, text_color)
                     screen.blit(text, (room.trader.rect.x, room.trader.rect.bottom + i * 25))
 
         if room.event == "fog":
@@ -1062,9 +1162,6 @@ def main():
                 spawn_x = random.randint(0, WIDTH)
                 spawn_y = random.randint(0, HEIGHT)
                 wind_particles.add(WindParticle(spawn_x, spawn_y, room.wind_direction))
-
-
-
 
 
             wind_particles.update()
