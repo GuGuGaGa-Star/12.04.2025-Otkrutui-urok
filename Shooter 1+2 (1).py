@@ -49,7 +49,7 @@ class Player(pygame.sprite.Sprite):
         self.image = pygame.Surface((40, 40))
         self.image.fill((0, 255, 0))
         self.rect = self.image.get_rect(center=(x, y))
-        self.speed = 5
+        self.speed = 6
         self.ammo = 6
         self.reloading = False
         self.health = 3
@@ -62,9 +62,9 @@ class Player(pygame.sprite.Sprite):
         self.weapon_images = {
             "pistol": pygame.transform.scale(pygame.image.load("pistol.png"), (40, 15)),
             "shotgun": pygame.transform.scale(pygame.image.load("shotgun.png"), (int(screen_width // 16), int(scale_factor * 25))),
-            "smg": pygame.transform.scale(pygame.image.load("smg.png"), (45, 20)),
-            "laser": pygame.transform.scale(pygame.image.load("laser.png"), (50, 15)),
-            "rocket": pygame.transform.scale(pygame.image.load("rocket.png"), (60, 25))
+            "smg": pygame.transform.scale(pygame.image.load("smg.png"), (int(screen_width // 12), int(scale_factor * 15))),
+            "laser": pygame.transform.scale(pygame.image.load("laser.png"), (int(screen_width // 14), int(scale_factor * 18))),
+            "rocket": pygame.transform.scale(pygame.image.load("rocket.png"), (int(screen_width // 16), int(scale_factor * 25)))
         }
         self.weapon_offset = 25
         self.invincible_time = 0
@@ -90,7 +90,7 @@ class Player(pygame.sprite.Sprite):
         self.just_took_damage = False
         self.damage_effect_time = 0
         self.chips = 0
-
+        self.relic = None
 
     def update(self, keys, walls, current_time):
         if not self.alive:
@@ -150,6 +150,10 @@ class Player(pygame.sprite.Sprite):
         if self.invincible_time > 0 and current_time - self.invincible_time > 100:
             self.invincible_time = 0
 
+    def use_relic(self):
+        if self.relic:
+            self.relic.activate(self, Room.current_room)
+
     def gain_xp(self, amount):
         self.xp += amount
         if self.xp >= self.xp_to_next:
@@ -205,37 +209,52 @@ class Player(pygame.sprite.Sprite):
 
         surface.blit(rotated_image, weapon_pos)
 
-
     def shoot(self, bullets, target_pos):
-        self.target = [Enemy, ChasingEnemy, TeleportBoss, Boss]
         weapon = self.unlocked_weapons[self.current_weapon]
-        if self.unlocked_weapons[self.current_weapon] == "shotgun":
+
+        if weapon == "shotgun":
             if self.ammo >= 3 and not self.reloading:
                 shoot_sound.play()
-                for _ in range(5):
-                    spread_angle = random.uniform(-5, 5)
-                    angle = math.atan2(target_pos[1] - self.rect.centery, target_pos[0] - self.rect.centerx)
-                    angle += math.radians(spread_angle)
-                    dx = math.cos(angle) * 6
-                    dy = math.sin(angle) * 6
-                    bullet = Bullet(self.rect.centerx, self.rect.centery,
-                                    (self.rect.centerx + dx, self.rect.centery + dy), "player", is_shotgun=True)
-                    bullets.add(bullet)
                 self.ammo -= 3
+
+                for _ in range(8):
+                    spread = random.uniform(-15, 15)
+                    angle = math.atan2(target_pos[1] - self.rect.centery, target_pos[0] - self.rect.centerx)
+                    angle += math.radians(spread)
+                    dx = math.cos(angle) * 10
+                    dy = math.sin(angle) * 10
+                    bullet = Bullet(self.rect.centerx, self.rect.centery,
+                                    (self.rect.centerx + dx * 10, self.rect.centery + dy * 10),
+                                    "player", is_shotgun=True)
+                    bullet.speed = 20
+                    bullet.piercing = False
+                    bullets.add(bullet)
+
+                angle_back = math.atan2(self.rect.centery - target_pos[1], self.rect.centerx - target_pos[0])
+                self.rect.x += int(math.cos(angle_back) * 10)
+                self.rect.y += int(math.sin(angle_back) * 10)
+
             elif self.ammo < 3 and not self.reloading:
                 self.reload()
+
         elif weapon == "smg":
             if self.ammo > 0 and not self.reloading:
                 shoot_sound.play()
                 for _ in range(2):
-                    spread = random.uniform(-0.5, 0.5)
+                    spread = random.uniform(-0.7, 0.7)
                     angle = math.atan2(target_pos[1] - self.rect.centery, target_pos[0] - self.rect.centerx) + spread
                     dx = math.cos(angle) * 3
                     dy = math.sin(angle) * 3
                     bullet = Bullet(self.rect.centerx, self.rect.centery,
-                                    (self.rect.centerx + dx, self.rect.centery + dy),
-                                    "player", is_shotgun=False)
+                                    (self.rect.centerx + dx, self.rect.centery + dy),"player", is_shotgun=False)
                     bullets.add(bullet)
+
+                if random.random() < 0.3:
+                    extra_bullet = Bullet(self.rect.centerx, self.rect.centery,
+                                          (self.rect.centerx + dx, self.rect.centery + dy),
+                                          "player", is_shotgun=False)
+                    bullets.add(extra_bullet)
+
                 self.ammo -= 1
             else:
                 self.reload()
@@ -243,10 +262,16 @@ class Player(pygame.sprite.Sprite):
         elif weapon == "laser":
             if self.ammo > 0 and not self.reloading:
                 shoot_sound.play()
-                bullet = Bullet(self.rect.centerx, self.rect.centery, target_pos, "player", self.speed * 2)
-                bullet.image.fill((0, 255, 255))
-                bullets.add(bullet)
-                bullets.add(bullet)
+                angle = math.atan2(target_pos[1] - self.rect.centery, target_pos[0] - self.rect.centerx)
+                dx = math.cos(angle)
+                dy = math.sin(angle)
+                laser_end = pygame.Vector2(self.rect.centerx + dx * 1000, self.rect.centery + dy * 1000)
+
+                pygame.draw.line(screen, (0, 255, 255), self.rect.center, laser_end, 4)
+                for enemy in list(Room.current_room.enemies):
+                    if pygame.Rect(enemy.rect).clipline(self.rect.center, laser_end):
+                        enemy.take_damage(self)
+
                 self.ammo -= 1
             else:
                 self.reload()
@@ -306,25 +331,24 @@ class Player(pygame.sprite.Sprite):
 class BloodParticle(pygame.sprite.Sprite):
     def __init__(self, x, y, dx, dy, color=(255, 0, 0)):
         super().__init__()
-        self.image = pygame.Surface((5, 5), pygame.SRCALPHA)
+        self.size = random.randint(4, 8)
+        self.image = pygame.Surface((self.size, self.size), pygame.SRCALPHA)
         self.color = color
-        self.image.fill(self.color)
+        pygame.draw.circle(self.image, self.color, (self.size // 2, self.size // 2), self.size // 2)
         self.rect = self.image.get_rect(center=(x, y))
         self.dx = dx
         self.dy = dy
+        self.gravity = 0.1
         self.life_time = random.randint(30, 60)
-        self.size = random.randint(3, 6)
         self.alpha = 255
 
     def update(self):
-
         self.rect.x += self.dx
         self.rect.y += self.dy
-
+        self.dy += self.gravity
 
         self.life_time -= 1
         self.alpha -= 5
-
 
         self.image = pygame.Surface((self.size, self.size), pygame.SRCALPHA)
         pygame.draw.circle(self.image, self.color, (self.size // 2, self.size // 2), self.size // 2)
@@ -349,6 +373,25 @@ class WindParticle(pygame.sprite.Sprite):
         if self.life <= 0:
             self.kill()
 
+
+
+
+class Relic:
+    def __init__(self, name, cooldown):
+        self.name = name
+        self.cooldown = cooldown
+
+    def activate(self, player, room):
+        pass
+
+class BerserkRelic(Relic):
+    def __init__(self):
+        super().__init__("Berserkiyum", 20000)  # 20 секунд кулдаун
+        self.duration = 5000  # 5 секунд эффект
+
+    def activate(self, player, room):
+        player.berserk_active = True
+        player.berserk_start_time = pygame.time.get_ticks()
 
 
 class Trader(pygame.sprite.Sprite):
@@ -427,6 +470,7 @@ class Bullet(pygame.sprite.Sprite):
         self.piercing = False
         self.explodes = False
 
+
         angle = math.atan2(target_pos[1] - y, target_pos[0] - x)
         if hasattr(Room, 'current_room') and Room.current_room.event == "bullet_drift":
             angle += random.uniform(-0.25, 0.25)
@@ -449,7 +493,7 @@ class Bullet(pygame.sprite.Sprite):
             if hasattr(target, 'take_damage'):
                 damage = 1
                 if player.crit_chance > 0 and random.random() < player.crit_chance:
-                    damage = 2
+                    damage *= 2
                 for _ in range(damage):
                     target.take_damage(player)
                 self.create_blood_splash(target)
@@ -479,7 +523,11 @@ class Bullet(pygame.sprite.Sprite):
             self.kill()
 
     def explode_area(self, player):
-        explosion_radius = 100
+        flash = pygame.Surface((WIDTH, HEIGHT))
+        flash.set_alpha(80)
+        flash.fill((255, 200, 100))
+        screen.blit(flash, (0, 0))
+        explosion_radius = 300
         explosion_center = pygame.Vector2(self.rect.center)
         for enemy in list(Room.current_room.enemies):
             if explosion_center.distance_to(enemy.rect.center) <= explosion_radius:
@@ -488,6 +536,15 @@ class Bullet(pygame.sprite.Sprite):
             dx = random.uniform(-3, 3)
             dy = random.uniform(-3, 3)
             blood_particles.add(BloodParticle(self.rect.centerx, self.rect.centery, dx, dy, (255, 140, 0)))
+        for enemy in list(Room.current_room.enemies):
+            if explosion_center.distance_to(enemy.rect.center) <= explosion_radius:
+                enemy.take_damage(player)
+                knockback = pygame.Vector2(enemy.rect.center) - explosion_center
+                if knockback.length() > 0:
+                    knockback.normalize_ip()
+                    enemy.rect.x += int(knockback.x * 40)
+                    enemy.rect.y += int(knockback.y * 40)
+
 
     def create_blood_splash(self, target):
 
@@ -535,11 +592,22 @@ class TeleportBoss(pygame.sprite.Sprite):
             self.rect.center = (random.randint(100, WIDTH - 100), random.randint(100, HEIGHT - 100))
             self.last_tp = pygame.time.get_ticks()
 
+    def explode_gore(self):
+        for _ in range(50):
+            dx = random.uniform(-6, 6)
+            dy = random.uniform(-6, 6)
+            size = random.randint(3, 8)
+            color = random.choice([(255, 0, 0), (200, 0, 0), (120, 0, 0)])
+            particle = BloodParticle(self.rect.centerx, self.rect.centery, dx, dy, color)
+            particle.size = size
+            blood_particles.add(particle)
+
     def take_damage(self, player):
         hit_sound.play()
         self.health -= 1
         if self.health <= 0:
             death_sound.play()
+            self.explode_gore()
             self.kill()
             player.gain_xp(10)
             player.chips += 4
@@ -576,11 +644,22 @@ class Enemy(pygame.sprite.Sprite):
         bullet = Bullet(self.rect.centerx, self.rect.centery, target_pos, "enemy")
         bullets.add(bullet)
 
+    def explode_gore(self):
+        for _ in range(50):
+            dx = random.uniform(-6, 6)
+            dy = random.uniform(-6, 6)
+            size = random.randint(3, 8)
+            color = random.choice([(255, 0, 0), (200, 0, 0), (120, 0, 0)])
+            particle = BloodParticle(self.rect.centerx, self.rect.centery, dx, dy, color)
+            particle.size = size
+            blood_particles.add(particle)
+
     def take_damage(self, player):
         hit_sound.play()
         self.health -= 1
         if self.health <= 0:
             death_sound.play()
+            self.explode_gore()
             self.kill()
             player.gain_xp(2)
             player.chips += 1
@@ -613,11 +692,22 @@ class ChasingEnemy(pygame.sprite.Sprite):
         bullet = Bullet(self.rect.centerx, self.rect.centery, target_pos, "enemy")
         bullets.add(bullet)
 
+    def explode_gore(self):
+        for _ in range(50):
+            dx = random.uniform(-6, 6)
+            dy = random.uniform(-6, 6)
+            size = random.randint(3, 8)
+            color = random.choice([(255, 0, 0), (200, 0, 0), (120, 0, 0)])
+            particle = BloodParticle(self.rect.centerx, self.rect.centery, dx, dy, color)
+            particle.size = size
+            blood_particles.add(particle)
+
     def take_damage(self, player):
         hit_sound.play()
         self.health -= 1
         if self.health <= 0:
             death_sound.play()
+            self.explode_gore()
             self.kill()
             player.gain_xp(5)
             player.chips += 2
@@ -697,6 +787,7 @@ class Boss(pygame.sprite.Sprite):
         self.health -= 1
         if self.health <= 0:
             death_sound.play()
+            self.explode_gore()
             self.kill()
             self.room.boss = None
             player.gain_xp(20)
@@ -786,8 +877,6 @@ class Room:
                     if grid[dy][dx]:
                         can_place_wall = False
                         break
-                    if WIDTH//2 - 20 <= dx <= WIDTH//2 + 20 and WIDTH//2 - 20 <= dy <= WIDTH//2 + 20:
-                        can_place_wall = False
                 if not can_place_wall:
                     break
 
@@ -809,6 +898,7 @@ class Room:
             pygame.draw.rect(surface, (127, 180, 240), wall)
         if self.boss:
             surface.blit(self.boss.image, self.boss.rect)
+            #if self.boss.health == 0:
         if self.event == "fog":
             fog = pygame.Surface((WIDTH, HEIGHT))
             fog.set_alpha(120)
@@ -978,7 +1068,7 @@ def main():
                     player.crit_chance = 0.0
                     player.DodgePlus = 0
                     player.reload_time = 0
-                    player.chips = 0
+                    player.chips = 100
                     room = Room()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_p:
                 pause_game()
@@ -1019,6 +1109,7 @@ def main():
 
         if room.boss:
             room.boss.update(player, enemy_bullets, current_time)
+
         bullets.update()
         enemy_bullets.update()
 
@@ -1108,6 +1199,11 @@ def main():
                                 room.trader.interact(player, 1)
                             elif event.key == pygame.K_3:
                                 room.trader.interact(player, 2)
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:  # ПКМ
+                        current_time = pygame.time.get_ticks()
+                        if player.relic and current_time - player.last_relic_use > player.relic_cooldown:
+                            player.use_relic()
+                            player.last_relic_use = current_time
 
         if pygame.time.get_ticks() - shake_start_time < shake_duration:
             shake_offset = [random.randint(-5, 5), random.randint(-5, 5)]
@@ -1152,11 +1248,17 @@ def main():
             fog_surface.blit(vision_surface, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
             screen.blit(fog_surface, (0, 0))
 
-        if room.boss:
-            screen.blit(room.boss.image, room.boss.rect)
+        if player.relic:
+            remaining = max(0, (player.relic_cooldown - (pygame.time.get_ticks() - player.last_relic_use)) // 1000)
+            relic_text = font.render(f"Relic ({player.relic.name}): {remaining}s", True, (100, 200, 255))
+            screen.blit(relic_text, (WIDTH - 250, HEIGHT - 40))
+
         if room.boss:
             for bullet in bullets:
                 bullet.check_collision(room.boss, player)
+            if room.boss.health > 0:
+                screen.blit(room.boss.image, room.boss.rect)
+
         enemy_bullets.draw(screen)
         room = check_room_transition(player, room)
         if room.event == "bullet_drift":
@@ -1165,16 +1267,59 @@ def main():
                 spawn_y = random.randint(0, HEIGHT)
                 wind_particles.add(WindParticle(spawn_x, spawn_y, room.wind_direction))
 
-
             wind_particles.update()
             wind_particles.draw(screen)
 
         player.draw_weapon(screen, pygame.mouse.get_pos())
+        if room.boss:
+            if room.boss.health <= 0:
+                room.boss.kill()
 
         pygame.display.flip()
         clock.tick(FPS)
 
     pygame.quit()
+
+
+class Relic:
+    def __init__(self, name, cooldown, effect):
+        self.name = name
+        self.cooldown = cooldown
+        self.last_used = -cooldown
+        self.effect = effect  # функція ефекту
+
+    def can_use(self, current_time):
+        return current_time - self.last_used >= self.cooldown
+
+    def use(self, player, current_time):
+        if self.can_use(current_time):
+            self.effect(player)
+            self.last_used = current_time
+
+
+def time_shield_effect(player):
+    player.invincible_time = pygame.time.get_ticks()
+    player.dodge_start_time = pygame.time.get_ticks()
+    player.dodging = True
+
+
+def explosion_effect(player):
+    for enemy in Room.current_room.enemies:
+        if pygame.Vector2(enemy.rect.center).distance_to(player.rect.center) <= 150:
+            enemy.take_damage(player)
+
+
+def speed_boost_effect(player):
+    player.speed += 3
+    pygame.time.set_timer(pygame.USEREVENT + 10, 5000)
+
+
+relics_list = [
+    Relic("Щит Часу", 8000, time_shield_effect),
+    Relic("Сфера Вибуху", 10000, explosion_effect),
+    Relic("Дар Швидкості", 12000, speed_boost_effect),
+]
+
 
 
 if __name__ == "__main__":
