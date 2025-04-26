@@ -787,7 +787,6 @@ class Boss(pygame.sprite.Sprite):
         self.health -= 1
         if self.health <= 0:
             death_sound.play()
-            self.explode_gore()
             self.kill()
             self.room.boss = None
             player.gain_xp(20)
@@ -896,9 +895,6 @@ class Room:
     def draw(self, surface):
         for wall in self.walls:
             pygame.draw.rect(surface, (127, 180, 240), wall)
-        if self.boss:
-            surface.blit(self.boss.image, self.boss.rect)
-            #if self.boss.health == 0:
         if self.event == "fog":
             fog = pygame.Surface((WIDTH, HEIGHT))
             fog.set_alpha(120)
@@ -1028,7 +1024,6 @@ def main():
     pygame.mixer.music.play(-1, 0.0)
     show_main_menu()
     running = True
-    game = Game()
     player = Player(WIDTH // 2, HEIGHT // 2)
     room = Room()
     bullets = pygame.sprite.Group()
@@ -1106,9 +1101,6 @@ def main():
                 enemy.update(player, enemy_bullets, current_time, room.walls)
             else:
                 enemy.update(player, enemy_bullets, current_time)
-
-        if room.boss:
-            room.boss.update(player, enemy_bullets, current_time)
 
         bullets.update()
         enemy_bullets.update()
@@ -1242,22 +1234,12 @@ def main():
         if room.event == "fog":
             fog_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
             fog_surface.fill((50, 50, 50, 220))
-            vision_radius = 200
-            vision_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            pygame.draw.circle(vision_surface, (0, 0, 0, 0), player.rect.center, vision_radius)
-            fog_surface.blit(vision_surface, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
             screen.blit(fog_surface, (0, 0))
 
         if player.relic:
             remaining = max(0, (player.relic_cooldown - (pygame.time.get_ticks() - player.last_relic_use)) // 1000)
             relic_text = font.render(f"Relic ({player.relic.name}): {remaining}s", True, (100, 200, 255))
             screen.blit(relic_text, (WIDTH - 250, HEIGHT - 40))
-
-        if room.boss:
-            for bullet in bullets:
-                bullet.check_collision(room.boss, player)
-            if room.boss.health > 0:
-                screen.blit(room.boss.image, room.boss.rect)
 
         enemy_bullets.draw(screen)
         room = check_room_transition(player, room)
@@ -1271,9 +1253,11 @@ def main():
             wind_particles.draw(screen)
 
         player.draw_weapon(screen, pygame.mouse.get_pos())
-        if room.boss:
-            if room.boss.health <= 0:
-                room.boss.kill()
+
+        if room.boss and room.boss.health >= 0:
+            screen.blit(room.boss.image, room.boss.rect)
+            for bullet in bullets:
+                bullet.check_collision(room.boss, player)
 
         pygame.display.flip()
         clock.tick(FPS)
@@ -1281,44 +1265,10 @@ def main():
     pygame.quit()
 
 
-class Relic:
-    def __init__(self, name, cooldown, effect):
-        self.name = name
-        self.cooldown = cooldown
-        self.last_used = -cooldown
-        self.effect = effect  # функція ефекту
-
-    def can_use(self, current_time):
-        return current_time - self.last_used >= self.cooldown
-
-    def use(self, player, current_time):
-        if self.can_use(current_time):
-            self.effect(player)
-            self.last_used = current_time
-
-
-def time_shield_effect(player):
-    player.invincible_time = pygame.time.get_ticks()
-    player.dodge_start_time = pygame.time.get_ticks()
-    player.dodging = True
-
-
 def explosion_effect(player):
     for enemy in Room.current_room.enemies:
         if pygame.Vector2(enemy.rect.center).distance_to(player.rect.center) <= 150:
             enemy.take_damage(player)
-
-
-def speed_boost_effect(player):
-    player.speed += 3
-    pygame.time.set_timer(pygame.USEREVENT + 10, 5000)
-
-
-relics_list = [
-    Relic("Щит Часу", 8000, time_shield_effect),
-    Relic("Сфера Вибуху", 10000, explosion_effect),
-    Relic("Дар Швидкості", 12000, speed_boost_effect),
-]
 
 
 
