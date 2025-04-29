@@ -1,3 +1,4 @@
+
 import pygame
 import random
 import math
@@ -46,8 +47,8 @@ def has_line_of_sight(start_pos, end_pos, walls):
 class Player(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        self.image = pygame.Surface((40, 40))
-        self.image.fill((0, 255, 0))
+        self.image = pygame.image.load("Player.png").convert_alpha()
+        self.image = pygame.transform.scale(self.image, (50, 50))
         self.rect = self.image.get_rect(center=(x, y))
         self.speed = 6
         self.ammo = 6
@@ -91,6 +92,19 @@ class Player(pygame.sprite.Sprite):
         self.damage_effect_time = 0
         self.chips = 0
         self.relic = None
+        PLAYER_SIZE = (60, 60)
+
+        def load_and_scale(path, size):
+            return pygame.transform.scale(pygame.image.load(path).convert_alpha(), size)
+
+        self.animations = {
+            "idle": [load_and_scale(f"assets/player/idle_{i}.png", PLAYER_SIZE) for i in range(4)],
+            "run": [load_and_scale(f"assets/player/run_{i}.png", PLAYER_SIZE) for i in range(4)]
+        }
+        self.animation_state = "idle"
+        self.animation_index = 0
+        self.animation_timer = 0
+        self.image = self.animations["idle"][0]
 
     def update(self, keys, walls, current_time):
         if not self.alive:
@@ -136,6 +150,17 @@ class Player(pygame.sprite.Sprite):
                     self.rect = old_rect
                     break
 
+        if self.direction.length() == 0:
+            self.animation_state = "idle"
+        else:
+            self.animation_state = "run"
+
+        self.animation_timer += 1
+        if self.animation_timer >= 6:
+            self.animation_index = (self.animation_index + 1) % len(self.animations[self.animation_state])
+            self.animation_timer = 0
+
+        self.image = self.animations[self.animation_state][self.animation_index]
 
         if self.reloading and current_time - self.last_reload_time >= 1000 - self.reload_time:
             self.ammo = 6
@@ -374,31 +399,11 @@ class WindParticle(pygame.sprite.Sprite):
             self.kill()
 
 
-
-
-class Relic:
-    def __init__(self, name, cooldown):
-        self.name = name
-        self.cooldown = cooldown
-
-    def activate(self, player, room):
-        pass
-
-class BerserkRelic(Relic):
-    def __init__(self):
-        super().__init__("Berserkiyum", 20000)  # 20 секунд кулдаун
-        self.duration = 5000  # 5 секунд эффект
-
-    def activate(self, player, room):
-        player.berserk_active = True
-        player.berserk_start_time = pygame.time.get_ticks()
-
-
 class Trader(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        self.image = pygame.Surface((50, 70))
-        self.image.fill((255, 215, 0))
+        self.image = pygame.image.load("Trader.png").convert_alpha()
+        self.image = pygame.transform.scale(self.image, (100, 120))
         self.rect = self.image.get_rect(center=(x, y))
         self.weapon_options = ["smg", "laser", "rocket"]
         self.prices = [5, 7, 10]
@@ -406,20 +411,19 @@ class Trader(pygame.sprite.Sprite):
     def interact(self, player, index):
         if player.chips >= self.prices[index]:
             new_weapon = self.weapon_options[index]
-            if new_weapon not in player.unlocked_weapons:
+            if new_weapon not in player.unlocked_weapons and new_weapon != "SOLD":
                 player.unlocked_weapons.append(new_weapon)
                 player.chips -= self.prices[index]
-                self.weapon_options[index] = "SOLD"
                 self.prices[index] = 0
+                self.weapon_options[index] = "SOLD"
                 buy_sound.play()
-
 
 
 class SpikeTrap(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        self.image = pygame.Surface((50, 50))
-        self.image.fill((144, 144, 144))
+        self.image = pygame.image.load("Spike_Trap.png").convert_alpha()
+        self.image = pygame.transform.scale(self.image, (80, 80))
         self.rect = self.image.get_rect(topleft=(x, y))
         self.damage_timer = 0
 
@@ -433,8 +437,8 @@ class SpikeTrap(pygame.sprite.Sprite):
 class ExplosiveBarrel(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        self.image = pygame.Surface((40, 60))
-        self.image.fill((255, 120, 0))
+        self.image = pygame.image.load("Bochka.png").convert_alpha()
+        self.image = pygame.transform.scale(self.image, (60, 80))
         self.rect = self.image.get_rect(center=(x, y))
         self.health = 2
 
@@ -560,8 +564,8 @@ blood_particles = pygame.sprite.Group()
 class TeleportBoss(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        self.image = pygame.Surface((60, 50))
-        self.image.fill((100, 0, 150))
+        self.image = pygame.image.load("TeleportingBoss.png").convert_alpha()
+        self.image = pygame.transform.scale(self.image, (70, 60))
         self.rect = self.image.get_rect(center=(x, y))
         self.speed = 2
         self.shoot_delay = 1000
@@ -617,8 +621,8 @@ class TeleportBoss(pygame.sprite.Sprite):
 class Enemy(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        self.image = pygame.Surface((40, 40))
-        self.image.fill((255, 0, 0))
+        self.image = pygame.image.load("Enemy.png").convert_alpha()
+        self.image = pygame.transform.scale(self.image, (50, 50))
         self.rect = self.image.get_rect(center=(x, y))
         self.speed = 2
         self.shoot_delay = 1000
@@ -667,8 +671,8 @@ class Enemy(pygame.sprite.Sprite):
 class ChasingEnemy(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        self.image = pygame.Surface((40, 40))
-        self.image.fill((0, 0, 255))
+        self.image = pygame.image.load("ChacingEnemy.png").convert_alpha()
+        self.image = pygame.transform.scale(self.image, (50, 50))
         self.rect = self.image.get_rect(center=(x, y))
         self.speed = 4
         self.shoot_delay = 1000
@@ -799,7 +803,6 @@ class Room:
 
     def __init__(self):
         Room.room_count += 1
-        self.walls = self.generate_walls()
         self.enemies = pygame.sprite.Group()
         self.boss = None
         self.traps = pygame.sprite.Group()
@@ -808,8 +811,12 @@ class Room:
         self.event = random.choice([None, "fog", "strong_enemies", "bullet_drift"])
         self.wind_direction = pygame.Vector2(0, 0)
         self.trader = None
+        self.Trader = False
         self.chips = pygame.sprite.Group()
-
+        if not self.Trader:
+            self.walls = self.generate_walls()
+        else:
+            self.walls = []
 
 
 
@@ -817,8 +824,11 @@ class Room:
         if Room.room_count % 10 == 0:
             self.boss = Boss(WIDTH // 2, HEIGHT // 2, Room.room_count // 10)
         elif random.randint(1, 8) == 1:
+            self.Trader = True
             self.trader = Trader(WIDTH // 2, HEIGHT // 2)
             self.enemies = pygame.sprite.Group()
+            self.traps = pygame.sprite.Group()
+            self.barrels = pygame.sprite.Group()
         else:
             normal_count = min(3 + Room.room_count // 2, 10)
             chasing_count = min(Room.room_count // 2, 10)
@@ -830,14 +840,19 @@ class Room:
             for _ in range(teleporting_count):
                 self.enemies.add(TeleportBoss(random.randint(50, WIDTH - 50), random.randint(50, HEIGHT - 50)))
         for _ in range(3):
-            trap_x = random.randint(100, WIDTH - 100)
-            trap_y = random.randint(100, HEIGHT - 100)
-            self.traps.add(SpikeTrap(trap_x, trap_y))
+            if not self.Trader:
+                trap_x = random.randint(100, WIDTH - 100)
+                trap_y = random.randint(100, HEIGHT - 100)
+                self.traps.add(SpikeTrap(trap_x, trap_y))
 
         for _ in range(random.randint(1, 2)):
-            bx = random.randint(100, WIDTH - 100)
-            by = random.randint(100, HEIGHT - 100)
-            self.barrels.add(ExplosiveBarrel(bx, by))
+            if not self.Trader:
+                bx = random.randint(100, WIDTH - 100)
+                by = random.randint(100, HEIGHT - 100)
+                self.barrels.add(ExplosiveBarrel(bx, by))
+
+
+
 
         if self.event == "strong_enemies":
             for enemy in self.enemies:
@@ -847,6 +862,20 @@ class Room:
             angle = random.uniform(0, 2 * math.pi)
             self.wind_direction = pygame.Vector2(math.cos(angle), math.sin(angle)) * 0.3
 
+    def draw_trader_decor(self, surface):
+        self.image = pygame.image.load("rug.png").convert_alpha()
+        self.image = pygame.transform.scale(self.image, (300, 250))
+        surface.blit(self.image, (self.trader.rect.centerx - 150, self.trader.rect.centery - 100))
+
+        self.image = pygame.image.load("torch.png").convert_alpha()
+        self.image = pygame.transform.scale(self.image, (30, 80))
+        surface.blit(self.image, (self.trader.rect.left - 40, self.trader.rect.top))
+        surface.blit(self.image, (self.trader.rect.right + 15, self.trader.rect.top))
+
+        self.image = pygame.image.load("table.png").convert_alpha()
+        self.image = pygame.transform.scale(self.image, (120, 80))
+        surface.blit(self.image, (self.trader.rect.centerx - 55, self.trader.rect.bottom + 10))
+
     def generate_walls(self):
         walls = []
         max_tries = 100
@@ -855,20 +884,24 @@ class Room:
         grid_height = HEIGHT // grid_size
         grid = [[False for _ in range(grid_width)] for _ in range(grid_height)]
 
-        attempts = 0
+        center_margin = 350
+        center_x, center_y = WIDTH // 2, HEIGHT // 2
 
+        attempts = 0
         while attempts < max_tries and len(walls) < Room.walls_count + Room.room_count:
             width = random.randint(200, 400)
             height = random.choice([20, random.randint(100, 300)])
 
-
             x_grid = random.randint(1, grid_width - 2)
             y_grid = random.randint(1, grid_height - 2)
-
 
             x = x_grid * grid_size
             y = y_grid * grid_size
 
+            if (center_x - center_margin < x < center_x + center_margin and
+                    center_y - center_margin < y < center_y + center_margin):
+                attempts += 1
+                continue
 
             can_place_wall = True
             for dx in range(x_grid, min(x_grid + (width // grid_size), grid_width)):
@@ -882,8 +915,6 @@ class Room:
             if can_place_wall:
                 new_wall = pygame.Rect(x, y, width, height)
                 walls.append(new_wall)
-
-
                 for dx in range(x_grid, min(x_grid + (width // grid_size), grid_width)):
                     for dy in range(y_grid, min(y_grid + (height // grid_size), grid_height)):
                         grid[dy][dx] = True
@@ -958,6 +989,8 @@ def pause_game():
         screen.blit(pause_text, (WIDTH // 2 - pause_text.get_width() // 2, HEIGHT // 2 - pause_text.get_height() // 2))
         pygame.display.update()
         clock.tick(5)
+
+
 
 
 def draw_ammo_bar(surface, ammo, reloading, x, y):
@@ -1200,24 +1233,9 @@ def main():
         if pygame.time.get_ticks() - shake_start_time < shake_duration:
             shake_offset = [random.randint(-5, 5), random.randint(-5, 5)]
             screen.blit(screen.copy(), shake_offset)
-        room.draw(screen)
-        room.enemies.draw(screen)
-        all_sprites.draw(screen)
-        bullets.draw(screen)
-        room.traps.update(player, current_time)
-        room.traps.draw(screen)
-        room.barrels.draw(screen)
-        chip_text = font.render(f"Chips: {player.chips}", True, (0, 255, 255))
-        screen.blit(chip_text, (10, 110))
-
-        room.chips.update()
-        room.chips.draw(screen)
-
-        for chip in room.chips:
-            if player.rect.colliderect(chip.rect):
-                chip.collect(player)
 
         if room.trader:
+            room.draw_trader_decor(screen)
             screen.blit(room.trader.image, room.trader.rect)
             font = pygame.font.Font(None, 24)
             if player.rect.colliderect(room.trader.rect):
@@ -1231,15 +1249,29 @@ def main():
                     text = font.render(display_text, True, text_color)
                     screen.blit(text, (room.trader.rect.x, room.trader.rect.bottom + i * 25))
 
+        room.traps.update(player, current_time)
+        room.traps.draw(screen)
+        room.draw(screen)
+        room.enemies.draw(screen)
+        all_sprites.draw(screen)
+        bullets.draw(screen)
+        room.barrels.draw(screen)
+        chip_text = font.render(f"Chips: {player.chips}", True, (0, 255, 255))
+        screen.blit(chip_text, (10, 110))
+
+        room.chips.update()
+        room.chips.draw(screen)
+
+        for chip in room.chips:
+            if player.rect.colliderect(chip.rect):
+                chip.collect(player)
+
+
+
         if room.event == "fog":
             fog_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
             fog_surface.fill((50, 50, 50, 220))
             screen.blit(fog_surface, (0, 0))
-
-        if player.relic:
-            remaining = max(0, (player.relic_cooldown - (pygame.time.get_ticks() - player.last_relic_use)) // 1000)
-            relic_text = font.render(f"Relic ({player.relic.name}): {remaining}s", True, (100, 200, 255))
-            screen.blit(relic_text, (WIDTH - 250, HEIGHT - 40))
 
         enemy_bullets.draw(screen)
         room = check_room_transition(player, room)
@@ -1256,6 +1288,7 @@ def main():
 
         if room.boss and room.boss.health >= 0:
             screen.blit(room.boss.image, room.boss.rect)
+            room.boss.update(player, enemy_bullets, current_time)
             for bullet in bullets:
                 bullet.check_collision(room.boss, player)
 
@@ -1263,13 +1296,6 @@ def main():
         clock.tick(FPS)
 
     pygame.quit()
-
-
-def explosion_effect(player):
-    for enemy in Room.current_room.enemies:
-        if pygame.Vector2(enemy.rect.center).distance_to(player.rect.center) <= 150:
-            enemy.take_damage(player)
-
 
 
 if __name__ == "__main__":
