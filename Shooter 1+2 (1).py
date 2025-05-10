@@ -1,4 +1,5 @@
 
+
 import pygame
 import random
 import math
@@ -23,7 +24,7 @@ directions = {
     'LEFT': (WIDTH - 40, 0),
     'RIGHT': (-WIDTH + 40, 0)
 }
-global ammo_bonus
+
 RELOAD_EVENT = pygame.USEREVENT + 1
 HEART_SIZE = 30
 
@@ -91,7 +92,6 @@ class Player(pygame.sprite.Sprite):
         self.just_took_damage = False
         self.damage_effect_time = 0
         self.chips = 0
-        self.relic = None
         PLAYER_SIZE = (60, 60)
 
         def load_and_scale(path, size):
@@ -748,8 +748,8 @@ def check_room_transition(player, room):
 class Boss(pygame.sprite.Sprite):
     def __init__(self, x, y, level=1):
         super().__init__()
-        self.image = pygame.Surface((80, 80))
-        self.image.fill((128, 0, 128))
+        self.image = pygame.image.load("Boss.png").convert_alpha()
+        self.image = pygame.transform.scale(self.image, (100, 100))
         self.rect = self.image.get_rect(center=(x, y))
         self.health = 20 + level + 5
         self.speed = 1.5 + level * 0.1
